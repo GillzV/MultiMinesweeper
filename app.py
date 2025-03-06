@@ -7,7 +7,7 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+socketio = SocketIO(app, async_mode='gevent', cors_allowed_origins="*", ping_timeout=60)
 
 # Store game rooms and their states
 rooms = {}
@@ -328,4 +328,4 @@ def handle_new_game(data):
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host='0.0.0.0', port=port) 
+    socketio.run(app, host='0.0.0.0', port=port, debug=False) 
