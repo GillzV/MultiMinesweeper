@@ -63,7 +63,6 @@
     <button onclick="copyLink()">Copy Link</button>
     <div id="start_game_container" style="margin-top: 20px;">
         <button id="start_game_button" onclick="startGame()" style="background-color: #4CAF50;">Start Game</button>
-        <div id="countdown" style="display: none; font-size: 24px; font-weight: bold; color: #4CAF50;"></div>
     </div>
 </div>
 
@@ -87,7 +86,6 @@
     const socket = io();
     let roomId = null;
     let currentPlayerId = null;
-    let countdownInterval = null;
     let longPressTimer = null;
 
     function createRoom() {
@@ -277,26 +275,12 @@
     });
 
     socket.on('game_start', () => {
-        const countdownDiv = document.getElementById('countdown');
-        countdownDiv.style.display = 'block';
-        
-        let count = 3;
-        countdownDiv.textContent = count;
-        
-        countdownInterval = setInterval(() => {
-            count--;
-            countdownDiv.textContent = count;
-            
-            if (count <= 0) {
-                clearInterval(countdownInterval);
-                countdownDiv.style.display = 'none';
-            }
-        }, 1000);
+        // Game starts immediately
+        socket.emit('game_started', { room_id: roomId });
     });
 
     socket.on('game_started', () => {
         document.getElementById('start_game_container').style.display = 'none';
-        document.getElementById('countdown').style.display = 'none';
     });
 
     socket.on('game_reset', () => {
@@ -309,10 +293,8 @@
         // Show the start game button again
         const startGameContainer = document.getElementById('start_game_container');
         const startButton = document.getElementById('start_game_button');
-        const countdownDiv = document.getElementById('countdown');
         startGameContainer.style.display = 'block';
         startButton.style.display = 'block';
-        countdownDiv.style.display = 'none';
     });
 
     socket.on('game_update', (data) => {

@@ -18,7 +18,6 @@
 
 <div id="waiting_area" style="display: none; text-align: center; margin-top: 20px;">
     <h2>Waiting for host to start the game...</h2>
-    <div id="countdown" style="display: none; font-size: 24px; font-weight: bold; color: #4CAF50;"></div>
 </div>
 
 <div id="game_area" style="display: none;">
@@ -36,7 +35,6 @@
     const socket = io();
     let currentPlayerId = null;
     let roomId = null;
-    let countdownInterval = null;
     let longPressTimer = null;
 
     // Check for room ID in URL
@@ -214,27 +212,12 @@
     });
 
     socket.on('game_start', () => {
-        const countdownDiv = document.getElementById('countdown');
-        countdownDiv.style.display = 'block';
-        
-        let count = 3;
-        countdownDiv.textContent = count;
-        
-        countdownInterval = setInterval(() => {
-            count--;
-            countdownDiv.textContent = count;
-            
-            if (count <= 0) {
-                clearInterval(countdownInterval);
-                countdownDiv.style.display = 'none';
-                document.getElementById('waiting_area').style.display = 'none';
-            }
-        }, 1000);
+        // Game starts immediately
+        document.getElementById('waiting_area').style.display = 'none';
     });
 
     socket.on('game_started', () => {
         document.getElementById('waiting_area').style.display = 'none';
-        document.getElementById('countdown').style.display = 'none';
     });
 
     socket.on('game_update', (data) => {
@@ -267,11 +250,9 @@
             existingGameOver.remove();
         }
         
-        // Show the waiting area and countdown again
+        // Show the waiting area again
         const waitingArea = document.getElementById('waiting_area');
-        const countdownDiv = document.getElementById('countdown');
         waitingArea.style.display = 'block';
-        countdownDiv.style.display = 'none';
     });
 
     socket.on('error', (data) => {

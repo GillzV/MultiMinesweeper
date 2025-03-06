@@ -179,10 +179,6 @@ def handle_start_game(data):
     if room_id in rooms:
         room = rooms[room_id]
         room['started'] = True
-        # First emit game_start to show countdown
-        emit('game_start', room_id=room_id)
-        # After 3 seconds, emit game_started to start the game
-        socketio.sleep(3)
         emit('game_started', room_id=room_id)
 
 @socketio.on('reveal_cell')
