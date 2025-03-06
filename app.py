@@ -4,13 +4,10 @@ import random
 import time
 from datetime import datetime
 import os
-import eventlet
-
-eventlet.monkey_patch()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*", ping_timeout=60)
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60)
 
 # Store game rooms and their states
 rooms = {}
