@@ -223,33 +223,9 @@
     socket.on('game_update', (data) => {
         updateGrids(data);
         updateRankings(data.rankings);
-        
-        // Remove any existing game over display
-        const existingGameOver = document.querySelector('.game-over');
-        if (existingGameOver) {
-            existingGameOver.remove();
-        }
-        
-        // If this player lost, show game over
-        if (data.game_over && data.loser_id === currentPlayerId) {
-            const gameOverDiv = document.createElement('div');
-            gameOverDiv.className = 'game-over';
-            gameOverDiv.innerHTML = `
-                <h2>Game Over!</h2>
-                <p>You hit a mine!</p>
-                <button class="new-game-button" onclick="startNewGame()">New Game</button>
-            `;
-            document.body.appendChild(gameOverDiv);
-        }
     });
 
     socket.on('game_reset', () => {
-        // Remove any existing game over display
-        const existingGameOver = document.querySelector('.game-over');
-        if (existingGameOver) {
-            existingGameOver.remove();
-        }
-        
         // Show the waiting area again
         const waitingArea = document.getElementById('waiting_area');
         waitingArea.style.display = 'block';
