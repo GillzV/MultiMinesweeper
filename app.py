@@ -3,10 +3,11 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import random
 import time
 from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key'
-socketio = SocketIO(app)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Store game rooms and their states
 rooms = {}
@@ -326,4 +327,5 @@ def handle_new_game(data):
     emit('game_reset', room_id=room_id)
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True) 
+    port = int(os.environ.get("PORT", 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False) 
