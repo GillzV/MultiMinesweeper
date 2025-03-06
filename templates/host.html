@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Host a Game</h1>
+<div class="form-group">
+    <label for="host_name">Your Name:</label>
+    <input type="text" id="host_name" placeholder="Enter your name">
+</div>
+
+<div class="form-group">
+    <label for="num_players">Number of Players:</label>
+    <select id="num_players">
+        <option value="2">2 Players</option>
+        <option value="3">3 Players</option>
+        <option value="4">4 Players</option>
+        <option value="5">5 Players</option>
+        <option value="6">6 Players</option>
+        <option value="7">7 Players</option>
+        <option value="8">8 Players</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="grid_size">Grid Size:</label>
+    <select id="grid_size">
+        <option value="3">3x3</option>
+        <option value="4">4x4</option>
+        <option value="5">5x5</option>
+        <option value="6">6x6</option>
+        <option value="7">7x7</option>
+        <option value="8">8x8</option>
+        <option value="9">9x9</option>
+        <option value="10">10x10</option>
+        <option value="12">12x12</option>
+        <option value="15">15x15</option>
+        <option value="20">20x20</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="num_mines">Number of Mines:</label>
+    <select id="num_mines">
+        <option value="2">2 Mines</option>
+        <option value="3">3 Mines</option>
+        <option value="4">4 Mines</option>
+        <option value="5">5 Mines</option>
+        <option value="6">6 Mines</option>
+        <option value="7">7 Mines</option>
+        <option value="8">8 Mines</option>
+        <option value="10">10 Mines</option>
+        <option value="12">12 Mines</option>
+        <option value="15">15 Mines</option>
+        <option value="20">20 Mines</option>
+    </select>
+</div>
+
+<button onclick="createRoom()">Create Room</button>
+
+<div id="room_info" style="display: none; margin-top: 20px;">
+    <h3>Room Created!</h3>
+    <p>Share this link with your friends:</p>
+    <input type="text" id="room_link" readonly style="width: 100%; padding: 10px; margin: 10px 0;">
+    <button onclick="copyLink()">Copy Link</button>
+    <div id="start_game_container" style="margin-top: 20px;">
+        <button id="start_game_button" onclick="startGame()" style="background-color: #4CAF50;">Start Game</button>
+        <div id="countdown" style="display: none; font-size: 24px; font-weight: bold; color: #4CAF50;"></div>
+    </div>
+</div>
+
+<div id="error" class="error" style="display: none;"></div>
+
+<div id="game_area" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Game Room</h2>
+        <button onclick="startNewGame()" class="new-game-button" style="margin: 0;">New Game</button>
+    </div>
+    <div id="player_grids"></div>
+    <div class="rankings">
+        <h3>Rankings</h3>
+        <ul id="rankings_list" class="rankings-list"></ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const socket = io();
+    let roomId = null;
+    let currentPlayerId = null;
+    let countdownInterval = null;
+    let longPressTimer = null;
+
+    function createRoom() {
+        const hostName = document.getElementById('host_name').value.trim();
+        if (!hostName) {
+            showError('Please enter your name');
+            return;
+        }
+
+        const numPlayers = parseInt(document.getElementById('num_players').value);
+        const gridSize = parseInt(document.getElementById('grid_size').value);
+        const numMines = parseInt(document.getElementById('num_mines').value);
+        
+        // Generate a random room ID
+        roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        
+        socket.emit('create_room', {
+            room_id: roomId,
+            num_players: numPlayers,
+            grid_size: gridSize,
+            num_mines: numMines,
+            player_name: hostName
+        });
+    }
+
+    function startGame() {
+        socket.emit('start_game', { room_id: roomId });
+    }
+
+    function copyLink() {
+        const roomLink = document.getElementById('room_link');
+        roomLink.select();
+        document.execCommand('copy');
+        alert('Link copied to clipboard!');
+    }
+
+    function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    }
+
+    function createGrid(size, isActive = false) {
+        const grid = document.createElement('div');
+        grid.className = `grid player-grid ${isActive ? 'active' : 'inactive'}`;
+        grid.style.gridTemplateColumns = `repeat(${size}, 30px)`;
+        
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+                if (isActive) {
+                    cell.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (e.type === 'contextmenu' || longPressTimer) {
+                            toggleFlag(x, y);
+                        } else {
+                            revealCell(x, y);
+                        }
+                    });
+                    
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggleFlag(x, y);
+                    });
+                    
+                    cell.addEventListener('mousedown', () => {
+                        longPressTimer = setTimeout(() => {
+                            toggleFlag(x, y);
+                        }, 500);
+                    });
+                    
+                    cell.addEventListener('mouseup', () => {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    });
+                }
+                grid.appendChild(cell);
+            }
+        }
+        
+        return grid;
+    }
+
+    function revealCell(x, y) {
+        socket.emit('reveal_cell', {
+            room_id: roomId,
+            x: x,
+            y: y
+        });
+    }
+
+    function toggleFlag(x, y) {
+        socket.emit('toggle_flag', {
+            room_id: roomId,
+            x: x,
+            y: y
+        });
+    }
+
+    function updateGrids(data) {
+        const playerGridsDiv = document.getElementById('player_grids');
+        playerGridsDiv.innerHTML = '';
+
+        // Create a grid for each player
+        Object.entries(data.grids).forEach(([playerId, gridData]) => {
+            const gridContainer = document.createElement('div');
+            gridContainer.style.marginBottom = '20px';
+            
+            const playerName = document.createElement('h3');
+            playerName.textContent = gridData.name;
+            gridContainer.appendChild(playerName);
+
+            const grid = createGrid(gridData.size, playerId === currentPlayerId && !gridData.game_over);
+            gridContainer.appendChild(grid);
+
+            // Update cell states
+            gridData.visible.forEach((row, y) => {
+                row.forEach((isVisible, x) => {
+                    const cell = grid.children[y * gridData.size + x];
+                    if (isVisible) {
+                        cell.classList.add('revealed');
+                        if (gridData.grid[y][x] === -1) {
+                            cell.classList.add('mine');
+                            cell.textContent = '💣';
+                        } else if (gridData.grid[y][x] > 0) {
+                            cell.textContent = gridData.grid[y][x];
+                            cell.dataset.number = gridData.grid[y][x];
+                        }
+                    }
+                });
+            });
+
+            // Update flag states
+            gridData.flagged.forEach((row, y) => {
+                row.forEach((isFlagged, x) => {
+                    const cell = grid.children[y * gridData.size + x];
+                    if (isFlagged) {
+                        cell.classList.add('flagged');
+                    } else {
+                        cell.classList.remove('flagged');
+                    }
+                });
+            });
+
+            playerGridsDiv.appendChild(gridContainer);
+        });
+    }
+
+    function updateRankings(rankings) {
+        const rankingsList = document.getElementById('rankings_list');
+        rankingsList.innerHTML = '';
+        
+        rankings.forEach((player, index) => {
+            const li = document.createElement('li');
+            if (player.status === 'dnf') {
+                li.textContent = `${index + 1}. ${player.name} - DNF`;
+            } else {
+                li.textContent = `${index + 1}. ${player.name} - ${player.time.toFixed(2)}s`;
+            }
+            rankingsList.appendChild(li);
+        });
+    }
+
+    function startNewGame() {
+        socket.emit('new_game', { room_id: roomId });
+    }
+
+    socket.on('room_created', (data) => {
+        const roomInfo = document.getElementById('room_info');
+        const roomLink = document.getElementById('room_link');
+        roomLink.value = `${window.location.origin}/join?room=${roomId}`;
+        roomInfo.style.display = 'block';
+        
+        // Hide the form and show the game area
+        document.querySelectorAll('.form-group').forEach(el => el.style.display = 'none');
+        document.querySelector('button').style.display = 'none';
+        document.getElementById('game_area').style.display = 'block';
+        currentPlayerId = socket.id;
+    });
+
+    socket.on('game_start', () => {
+        const countdownDiv = document.getElementById('countdown');
+        countdownDiv.style.display = 'block';
+        
+        let count = 3;
+        countdownDiv.textContent = count;
+        
+        countdownInterval = setInterval(() => {
+            count--;
+            countdownDiv.textContent = count;
+            
+            if (count <= 0) {
+                clearInterval(countdownInterval);
+                countdownDiv.style.display = 'none';
+            }
+        }, 1000);
+    });
+
+    socket.on('game_started', () => {
+        document.getElementById('start_game_container').style.display = 'none';
+        document.getElementById('countdown').style.display = 'none';
+    });
+
+    socket.on('game_reset', () => {
+        // Remove any existing game over display
+        const existingGameOver = document.querySelector('.game-over');
+        if (existingGameOver) {
+            existingGameOver.remove();
+        }
+        
+        // Show the start game button again
+        const startGameContainer = document.getElementById('start_game_container');
+        const startButton = document.getElementById('start_game_button');
+        const countdownDiv = document.getElementById('countdown');
+        startGameContainer.style.display = 'block';
+        startButton.style.display = 'block';
+        countdownDiv.style.display = 'none';
+    });
+
+    socket.on('game_update', (data) => {
+        updateGrids(data);
+        updateRankings(data.rankings);
+        
+        // Remove any existing game over display
+        const existingGameOver = document.querySelector('.game-over');
+        if (existingGameOver) {
+            existingGameOver.remove();
+        }
+        
+        // If this player lost, show game over
+        if (data.game_over && data.loser_id === currentPlayerId) {
+            const gameOverDiv = document.createElement('div');
+            gameOverDiv.className = 'game-over';
+            gameOverDiv.innerHTML = `
+                <h2>Game Over!</h2>
+                <p>You hit a mine!</p>
+                <button class="new-game-button" onclick="startNewGame()">New Game</button>
+            `;
+            document.body.appendChild(gameOverDiv);
+        }
+    });
+
+    socket.on('error', (data) => {
+        showError(data.message);
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Join a Game</h1>
+<div class="form-group">
+    <label for="player_name">Your Name:</label>
+    <input type="text" id="player_name" placeholder="Enter your name">
+</div>
+
+<div class="form-group">
+    <label for="room_id">Room Code:</label>
+    <input type="text" id="room_id" placeholder="Enter room code">
+</div>
+
+<button onclick="joinGame()">Join Game</button>
+
+<div id="error" class="error" style="display: none;"></div>
+
+<div id="waiting_area" style="display: none; text-align: center; margin-top: 20px;">
+    <h2>Waiting for host to start the game...</h2>
+    <div id="countdown" style="display: none; font-size: 24px; font-weight: bold; color: #4CAF50;"></div>
+</div>
+
+<div id="game_area" style="display: none;">
+    <h2>Game Room</h2>
+    <div id="player_grids"></div>
+    <div class="rankings">
+        <h3>Rankings</h3>
+        <ul id="rankings_list" class="rankings-list"></ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const socket = io();
+    let currentPlayerId = null;
+    let roomId = null;
+    let countdownInterval = null;
+    let longPressTimer = null;
+
+    // Check for room ID in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomFromUrl = urlParams.get('room');
+    if (roomFromUrl) {
+        document.getElementById('room_id').value = roomFromUrl;
+    }
+
+    function joinGame() {
+        const playerName = document.getElementById('player_name').value.trim();
+        roomId = document.getElementById('room_id').value.trim().toUpperCase();
+
+        if (!playerName) {
+            showError('Please enter your name');
+            return;
+        }
+
+        if (!roomId) {
+            showError('Please enter a room code');
+            return;
+        }
+
+        socket.emit('join_room', {
+            room_id: roomId,
+            player_name: playerName
+        });
+    }
+
+    function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    }
+
+    function createGrid(size, isActive = false) {
+        const grid = document.createElement('div');
+        grid.className = `grid player-grid ${isActive ? 'active' : 'inactive'}`;
+        grid.style.gridTemplateColumns = `repeat(${size}, 30px)`;
+        
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+                if (isActive) {
+                    cell.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (e.type === 'contextmenu' || longPressTimer) {
+                            toggleFlag(x, y);
+                        } else {
+                            revealCell(x, y);
+                        }
+                    });
+                    
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggleFlag(x, y);
+                    });
+                    
+                    cell.addEventListener('mousedown', () => {
+                        longPressTimer = setTimeout(() => {
+                            toggleFlag(x, y);
+                        }, 500);
+                    });
+                    
+                    cell.addEventListener('mouseup', () => {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    });
+                }
+                grid.appendChild(cell);
+            }
+        }
+        
+        return grid;
+    }
+
+    function revealCell(x, y) {
+        socket.emit('reveal_cell', {
+            room_id: roomId,
+            x: x,
+            y: y
+        });
+    }
+
+    function toggleFlag(x, y) {
+        socket.emit('toggle_flag', {
+            room_id: roomId,
+            x: x,
+            y: y
+        });
+    }
+
+    function updateGrids(data) {
+        const playerGridsDiv = document.getElementById('player_grids');
+        playerGridsDiv.innerHTML = '';
+
+        // Create a grid for each player
+        Object.entries(data.grids).forEach(([playerId, gridData]) => {
+            const gridContainer = document.createElement('div');
+            gridContainer.style.marginBottom = '20px';
+            
+            const playerName = document.createElement('h3');
+            playerName.textContent = gridData.name;
+            gridContainer.appendChild(playerName);
+
+            const grid = createGrid(gridData.size, playerId === currentPlayerId && !gridData.game_over);
+            gridContainer.appendChild(grid);
+
+            // Update cell states
+            gridData.visible.forEach((row, y) => {
+                row.forEach((isVisible, x) => {
+                    const cell = grid.children[y * gridData.size + x];
+                    if (isVisible) {
+                        cell.classList.add('revealed');
+                        if (gridData.grid[y][x] === -1) {
+                            cell.classList.add('mine');
+                            cell.textContent = '💣';
+                        } else if (gridData.grid[y][x] > 0) {
+                            cell.textContent = gridData.grid[y][x];
+                            cell.dataset.number = gridData.grid[y][x];
+                        }
+                    }
+                });
+            });
+
+            // Update flag states
+            gridData.flagged.forEach((row, y) => {
+                row.forEach((isFlagged, x) => {
+                    const cell = grid.children[y * gridData.size + x];
+                    if (isFlagged) {
+                        cell.classList.add('flagged');
+                    } else {
+                        cell.classList.remove('flagged');
+                    }
+                });
+            });
+
+            playerGridsDiv.appendChild(gridContainer);
+        });
+    }
+
+    function updateRankings(rankings) {
+        const rankingsList = document.getElementById('rankings_list');
+        rankingsList.innerHTML = '';
+        
+        rankings.forEach((player, index) => {
+            const li = document.createElement('li');
+            if (player.status === 'dnf') {
+                li.textContent = `${index + 1}. ${player.name} - DNF`;
+            } else {
+                li.textContent = `${index + 1}. ${player.name} - ${player.time.toFixed(2)}s`;
+            }
+            rankingsList.appendChild(li);
+        });
+    }
+
+    function startNewGame() {
+        socket.emit('new_game', { room_id: roomId });
+    }
+
+    socket.on('joined_room', (data) => {
+        currentPlayerId = socket.id;
+        document.getElementById('game_area').style.display = 'block';
+        document.getElementById('waiting_area').style.display = 'block';
+        document.querySelectorAll('.form-group').forEach(el => el.style.display = 'none');
+        document.querySelector('button').style.display = 'none';
+    });
+
+    socket.on('game_start', () => {
+        const countdownDiv = document.getElementById('countdown');
+        countdownDiv.style.display = 'block';
+        
+        let count = 3;
+        countdownDiv.textContent = count;
+        
+        countdownInterval = setInterval(() => {
+            count--;
+            countdownDiv.textContent = count;
+            
+            if (count <= 0) {
+                clearInterval(countdownInterval);
+                countdownDiv.style.display = 'none';
+                document.getElementById('waiting_area').style.display = 'none';
+            }
+        }, 1000);
+    });
+
+    socket.on('game_started', () => {
+        document.getElementById('waiting_area').style.display = 'none';
+        document.getElementById('countdown').style.display = 'none';
+    });
+
+    socket.on('game_update', (data) => {
+        updateGrids(data);
+        updateRankings(data.rankings);
+        
+        // Remove any existing game over display
+        const existingGameOver = document.querySelector('.game-over');
+        if (existingGameOver) {
+            existingGameOver.remove();
+        }
+        
+        // If this player lost, show game over
+        if (data.game_over && data.loser_id === currentPlayerId) {
+            const gameOverDiv = document.createElement('div');
+            gameOverDiv.className = 'game-over';
+            gameOverDiv.innerHTML = `
+                <h2>Game Over!</h2>
+                <p>You hit a mine!</p>
+                <button class="new-game-button" onclick="startNewGame()">New Game</button>
+            `;
+            document.body.appendChild(gameOverDiv);
+        }
+    });
+
+    socket.on('game_reset', () => {
+        // Remove any existing game over display
+        const existingGameOver = document.querySelector('.game-over');
+        if (existingGameOver) {
+            existingGameOver.remove();
+        }
+        
+        // Show the waiting area and countdown again
+        const waitingArea = document.getElementById('waiting_area');
+        const countdownDiv = document.getElementById('countdown');
+        waitingArea.style.display = 'block';
+        countdownDiv.style.display = 'none';
+    });
+
+    socket.on('error', (data) => {
+        showError(data.message);
+    });
+</script>
+{% endblock %} 

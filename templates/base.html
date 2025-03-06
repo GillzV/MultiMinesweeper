@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Minesweeper</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .grid {
+            display: grid;
+            gap: 2px;
+            background-color: #ccc;
+            padding: 2px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .cell {
+            width: 30px;
+            height: 30px;
+            background-color: #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+            position: relative;
+        }
+        .cell:hover {
+            background-color: #ddd;
+        }
+        .cell.revealed {
+            background-color: #ddd;
+        }
+        .cell.mine {
+            background-color: red;
+        }
+        .cell.flagged::before {
+            content: '🚩';
+            position: absolute;
+            font-size: 16px;
+        }
+        .cell[data-number="1"] { color: blue; }
+        .cell[data-number="2"] { color: green; }
+        .cell[data-number="3"] { color: red; }
+        .cell[data-number="4"] { color: darkblue; }
+        .cell[data-number="5"] { color: darkred; }
+        .cell[data-number="6"] { color: teal; }
+        .cell[data-number="7"] { color: black; }
+        .cell[data-number="8"] { color: gray; }
+        .player-grid {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: white;
+            overflow-x: auto;
+        }
+        .player-grid.active {
+            border: 2px solid #4CAF50;
+            background-color: #f9f9f9;
+            transform: scale(1.1);
+            transition: transform 0.2s;
+        }
+        .player-grid.inactive {
+            opacity: 0.8;
+            transform: scale(0.9);
+            transition: transform 0.2s;
+        }
+        .rankings {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .rankings h3 {
+            margin-top: 0;
+        }
+        .rankings-list {
+            list-style: none;
+            padding: 0;
+        }
+        .rankings-list li {
+            margin: 5px 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
+        #player_grids {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 1000;
+        }
+        .new-game-button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 16px;
+        }
+        .new-game-button:hover {
+            background-color: #45a049;
+        }
+        #countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #4CAF50;
+            text-align: center;
+            z-index: 1000;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+        }
+        @media (max-width: 768px) {
+            .cell {
+                width: 25px;
+                height: 25px;
+            }
+            .player-grid.active {
+                transform: scale(1.05);
+            }
+            .player-grid.inactive {
+                transform: scale(0.95);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    {% block scripts %}{% endblock %}
+</body>
+</html> 
