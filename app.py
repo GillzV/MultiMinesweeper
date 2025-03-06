@@ -22,17 +22,20 @@ class MinesweeperGame:
         self.won = False
         self.start_time = None
         self.end_time = None
-        self.place_mines()
-        self.calculate_numbers()
+        self.first_click = True
 
-    def place_mines(self):
+    def place_mines(self, first_x, first_y):
+        # Clear the grid first
+        self.grid = [[0 for _ in range(self.size)] for _ in range(self.size)]
         mines_placed = 0
         while mines_placed < self.num_mines:
             x = random.randint(0, self.size - 1)
             y = random.randint(0, self.size - 1)
-            if self.grid[y][x] != -1:  # -1 represents a mine
+            # Don't place mine at first click or in adjacent cells
+            if (abs(x - first_x) > 1 or abs(y - first_y) > 1) and self.grid[y][x] != -1:
                 self.grid[y][x] = -1
                 mines_placed += 1
+        self.calculate_numbers()
 
     def calculate_numbers(self):
         for y in range(self.size):
@@ -54,6 +57,12 @@ class MinesweeperGame:
             self.start_time = time.time()
         if self.visible[y][x] or self.flagged[y][x]:
             return
+            
+        # If this is the first click, place mines now
+        if self.first_click:
+            self.place_mines(x, y)
+            self.first_click = False
+            
         self.visible[y][x] = True
         if self.grid[y][x] == -1:
             self.game_over = True
@@ -317,4 +326,4 @@ def handle_new_game(data):
     emit('game_reset', room_id=room_id)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True) 
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True) 
