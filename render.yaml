@@ -3,7 +3,7 @@ services:
     name: minesweeper
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn wsgi:application
+    startCommand: gunicorn --worker-class eventlet -w 1 wsgi:application
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.12
