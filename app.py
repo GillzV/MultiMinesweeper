@@ -4,66 +4,38 @@ import random
 import time
 from datetime import datetime
 import os
-import logging
-from collections import defaultdict
-
-# Set up logging with less verbose output
-logging.basicConfig(level=logging.WARNING)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
-app.config['JSON_SORT_KEYS'] = False  # Prevent JSON key sorting for better performance
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 86400  # Cache static files for 1 day
+socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
 
-# Configure SocketIO for better performance
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode=None,  # Let it choose the best mode automatically
-    ping_timeout=60,
-    ping_interval=25,
-    max_http_buffer_size=1024 * 1024,  # 1MB buffer size
-    manage_session=False  # Disable session handling for better performance
-)
-
-# Use a more efficient data structure for rooms
-rooms = defaultdict(dict)
+# Store game rooms and their states
+rooms = {}
 
 class MinesweeperGame:
     def __init__(self, size, num_mines):
         self.size = size
         self.num_mines = num_mines
-        # Use list comprehension for better performance
-        self.grid = [[0] * size for _ in range(size)]
-        self.visible = [[False] * size for _ in range(size)]
-        self.flagged = [[False] * size for _ in range(size)]
+        self.grid = [[0 for _ in range(size)] for _ in range(size)]
+        self.visible = [[False for _ in range(size)] for _ in range(size)]
+        self.flagged = [[False for _ in range(size)] for _ in range(size)]
         self.game_over = False
         self.won = False
         self.start_time = None
         self.end_time = None
         self.first_click = True
-        self._adjacent_cells = list(self._generate_adjacent_cells())
-
-    def _generate_adjacent_cells(self):
-        # Pre-calculate adjacent cell offsets
-        for dy in [-1, 0, 1]:
-            for dx in [-1, 0, 1]:
-                if dx == 0 and dy == 0:
-                    continue
-                yield (dx, dy)
 
     def place_mines(self, first_x, first_y):
-        self.grid = [[0] * self.size for _ in range(self.size)]
-        # Pre-calculate valid positions for mines
-        valid_positions = [
-            (x, y) for x in range(self.size) for y in range(self.size)
-            if abs(x - first_x) > 1 or abs(y - first_y) > 1
-        ]
-        # Place mines randomly using sample
-        mine_positions = random.sample(valid_positions, min(self.num_mines, len(valid_positions)))
-        for x, y in mine_positions:
-            self.grid[y][x] = -1
+        # Clear the grid first
+        self.grid = [[0 for _ in range(self.size)] for _ in range(self.size)]
+        mines_placed = 0
+        while mines_placed < self.num_mines:
+            x = random.randint(0, self.size - 1)
+            y = random.randint(0, self.size - 1)
+            # Don't place mine at first click or in adjacent cells
+            if (abs(x - first_x) > 1 or abs(y - first_y) > 1) and self.grid[y][x] != -1:
+                self.grid[y][x] = -1
+                mines_placed += 1
         self.calculate_numbers()
 
     def calculate_numbers(self):
@@ -71,11 +43,14 @@ class MinesweeperGame:
             for x in range(self.size):
                 if self.grid[y][x] != -1:
                     count = 0
-                    for dx, dy in self._adjacent_cells:
-                        new_x, new_y = x + dx, y + dy
-                        if 0 <= new_x < self.size and 0 <= new_y < self.size:
-                            if self.grid[new_y][new_x] == -1:
-                                count += 1
+                    for dy in [-1, 0, 1]:
+                        for dx in [-1, 0, 1]:
+                            if dx == 0 and dy == 0:
+                                continue
+                            new_x, new_y = x + dx, y + dy
+                            if 0 <= new_x < self.size and 0 <= new_y < self.size:
+                                if self.grid[new_y][new_x] == -1:
+                                    count += 1
                     self.grid[y][x] = count
 
     def reveal(self, x, y):
@@ -135,54 +110,35 @@ def host():
 def join():
     return render_template('join.html')
 
-def send_game_state(room_id):
-    """Optimized game state sender"""
-    try:
-        room = rooms[room_id]
-        # Create a more efficient data structure for grid data
-        grids_data = {
-            pid: {
-                'name': pdata['name'],
-                'grid': pdata['game'].grid,
-                'visible': pdata['game'].visible,
-                'flagged': pdata['game'].flagged,
-                'size': room['grid_size']
-            }
-            for pid, pdata in room['players'].items()
-        }
-        
-        emit('game_update', {
-            'grids': grids_data,
-            'rankings': room.get('rankings', [])
-        }, room=room_id)
-    except Exception as e:
-        logger.error(f"Error sending game state: {str(e)}")
-
 @socketio.on('create_room')
 def handle_create_room(data):
-    try:
-        room_id = data['room_id']
-        rooms[room_id] = {
-            'num_players': data['num_players'],
-            'players': {},
-            'grid_size': data['grid_size'],
-            'num_mines': data['num_mines'],
-            'started': False,
-            'rankings': []
-        }
-        
-        player_id = request.sid
-        rooms[room_id]['players'][player_id] = {
-            'name': data['player_name'],
-            'game': MinesweeperGame(data['grid_size'], data['num_mines'])
-        }
-        
-        join_room(room_id)
-        emit('room_created', {'room_id': room_id})
-        send_game_state(room_id)
-    except Exception as e:
-        logger.error(f"Error creating room: {str(e)}")
-        emit('error', {'message': str(e)})
+    room_id = data['room_id']
+    num_players = data['num_players']
+    grid_size = data['grid_size']
+    num_mines = data['num_mines']
+    player_name = data['player_name']
+    
+    rooms[room_id] = {
+        'num_players': num_players,
+        'players': {},
+        'grid_size': grid_size,
+        'num_mines': num_mines,
+        'started': False,
+        'rankings': []
+    }
+    
+    # Add the host as the first player
+    player_id = request.sid
+    rooms[room_id]['players'][player_id] = {
+        'name': player_name,
+        'game': MinesweeperGame(grid_size, num_mines)
+    }
+    
+    join_room(room_id)
+    emit('room_created', {'room_id': room_id})
+    
+    # Send initial game state to all players in the room
+    send_game_state(room_id)
 
 @socketio.on('join_room')
 def handle_join_room(data):
@@ -209,6 +165,23 @@ def handle_join_room(data):
     
     # Send game state to all players in the room
     send_game_state(room_id)
+
+def send_game_state(room_id):
+    room = rooms[room_id]
+    grids_data = {}
+    for pid, player_data in room['players'].items():
+        grids_data[pid] = {
+            'name': player_data['name'],
+            'grid': player_data['game'].grid,
+            'visible': player_data['game'].visible,
+            'flagged': player_data['game'].flagged,
+            'size': room['grid_size']
+        }
+    
+    emit('game_update', {
+        'grids': grids_data,
+        'rankings': room['rankings']
+    }, room=room_id)
 
 @socketio.on('start_game')
 def handle_start_game(data):
@@ -355,4 +328,4 @@ def handle_new_game(data):
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host='0.0.0.0', port=port) 
+    socketio.run(app, host='0.0.0.0', port=port, debug=True) 
