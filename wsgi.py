@@ -3,7 +3,8 @@ eventlet.monkey_patch()
 
 from app import app, socketio
 
-application = app
+# Wrap Flask app with SocketIO's middleware
+application = socketio.wsgi_app(app)
 
 if __name__ == '__main__':
     socketio.run(app) 
