@@ -20,7 +20,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 86400  # Cache static files for 1 day
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='gevent',
+    async_mode=None,  # Let it choose the best mode automatically
     ping_timeout=60,
     ping_interval=25,
     max_http_buffer_size=1024 * 1024,  # 1MB buffer size
