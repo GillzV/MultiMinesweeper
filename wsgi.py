@@ -1,7 +1,9 @@
+import eventlet
+eventlet.monkey_patch()
+
 from app import app, socketio
 
-# Create WSGI app
-application = socketio.wrap_app(app)
+application = app
 
 if __name__ == '__main__':
     socketio.run(app) 

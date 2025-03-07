@@ -3,9 +3,11 @@ services:
     name: minesweeper
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --worker-class eventlet -w 1 wsgi:application
+    startCommand: gunicorn --worker-class eventlet -w 1 wsgi:application --log-level debug --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.12
       - key: WEB_CONCURRENCY
-        value: 1 
+        value: 1
+      - key: SECRET_KEY
+        generateValue: true 
