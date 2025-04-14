@@ -216,9 +216,17 @@ def handle_join_room(data):
     }
     
     join_room(room_id)
-    emit('joined_room', {'room_id': room_id})
+    emit('room_joined', {
+        'room_id': room_id,
+        'players': [p['name'] for p in room['players'].values()]
+    })
     
-    # Send game state to all players in the room
+    # Notify other players about the new player
+    emit('player_joined', {
+        'players': [p['name'] for p in room['players'].values()]
+    }, room=room_id, include_self=False)
+    
+    # Send initial game state to the joining player
     send_game_state(room_id)
 
 @socketio.on('join_coop_room')
@@ -484,6 +492,9 @@ def handle_disconnect():
             emit('player_left_coop', {'players': room['players']}, room=room_id)
 
 def send_game_state(room_id):
+    if room_id not in rooms:
+        return
+        
     room = rooms[room_id]
     grids_data = {}
     for pid, player_data in room['players'].items():
@@ -492,7 +503,8 @@ def send_game_state(room_id):
             'grid': player_data['game'].grid,
             'visible': player_data['game'].visible,
             'flagged': player_data['game'].flagged,
-            'size': room['grid_size']
+            'size': room['grid_size'],
+            'game_over': player_data['game'].game_over
         }
     
     emit('game_update', {
