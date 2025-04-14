@@ -99,7 +99,8 @@
                 return;
             }
 
-            roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+            // Generate a 4-digit room code
+            roomId = Math.floor(1000 + Math.random() * 9000).toString();
             socket.emit('create_room', {
                 room_id: roomId,
                 player_name: playerName,
