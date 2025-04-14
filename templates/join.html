@@ -96,7 +96,6 @@
                     clearInterval(timer);
                     document.getElementById('waiting_area').style.display = 'none';
                     document.getElementById('game_area').style.display = 'block';
-                    socket.emit('game_started', { room_id: roomId });
                 }
             }, 1000);
         });

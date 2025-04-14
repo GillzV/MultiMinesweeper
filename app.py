@@ -251,10 +251,17 @@ def handle_join_coop_room(data):
 @socketio.on('start_game')
 def handle_start_game(data):
     room_id = data['room_id']
-    if room_id in rooms:
-        room = rooms[room_id]
-        room['started'] = True
-        emit('game_started', room_id=room_id)
+    if room_id not in rooms:
+        return
+        
+    room = rooms[room_id]
+    room['started'] = True
+    
+    # Initialize games for all players
+    for player_data in room['players'].values():
+        player_data['game'] = MinesweeperGame(room['grid_size'], room['num_mines'])
+    
+    emit('game_start', room_id=room_id)
 
 @socketio.on('start_coop_game')
 def handle_start_coop_game(data):
