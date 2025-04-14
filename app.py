@@ -266,13 +266,48 @@ def handle_start_game(data):
 @socketio.on('start_coop_game')
 def handle_start_coop_game(data):
     room_id = data['room_id']
-    if room_id in coop_rooms:
-        coop_rooms[room_id]['game_started'] = True
-        emit('coop_game_started', {
-            'grid': coop_rooms[room_id]['grid'],
-            'grid_size': coop_rooms[room_id]['grid_size'],
-            'num_mines': coop_rooms[room_id]['num_mines']
-        }, room=room_id)
+    if room_id not in coop_rooms:
+        return
+        
+    coop_room = coop_rooms[room_id]
+    coop_room['game_started'] = True
+    
+    # Initialize the cooperative game grid
+    grid_size = coop_room['grid_size']
+    num_mines = coop_room['num_mines']
+    grid = [[0 for _ in range(grid_size)] for _ in range(grid_size)]
+    visible = [[False for _ in range(grid_size)] for _ in range(grid_size)]
+    flagged = [[False for _ in range(grid_size)] for _ in range(grid_size)]
+    
+    # Place mines
+    mines_placed = 0
+    while mines_placed < num_mines:
+        x = random.randint(0, grid_size - 1)
+        y = random.randint(0, grid_size - 1)
+        if grid[y][x] != -1:
+            grid[y][x] = -1
+            mines_placed += 1
+            
+            # Update adjacent cells
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    if dx == 0 and dy == 0:
+                        continue
+                    new_x, new_y = x + dx, y + dy
+                    if 0 <= new_x < grid_size and 0 <= new_y < grid_size and grid[new_y][new_x] != -1:
+                        grid[new_y][new_x] += 1
+    
+    coop_room['grid'] = grid
+    coop_room['visible'] = visible
+    coop_room['flagged'] = flagged
+    coop_room['game_over'] = False
+    
+    emit('coop_game_started', {
+        'grid': grid,
+        'visible': visible,
+        'flagged': flagged,
+        'grid_size': grid_size
+    }, room=room_id)
 
 @socketio.on('reveal_cell')
 def handle_reveal_cell(data):
@@ -339,42 +374,60 @@ def handle_reveal_cell(data):
 @socketio.on('reveal_coop_cell')
 def handle_reveal_coop_cell(data):
     room_id = data['room_id']
-    row = data['row']
-    col = data['col']
+    x = data['x']
+    y = data['y']
     
-    if room_id not in coop_rooms or not coop_rooms[room_id]['game_started'] or coop_rooms[room_id]['game_over']:
+    if room_id not in coop_rooms:
         return
         
-    if coop_rooms[room_id]['revealed'][row][col] or coop_rooms[room_id]['flags'][row][col]:
+    coop_room = coop_rooms[room_id]
+    if not coop_room['game_started'] or coop_room['game_over']:
         return
         
-    coop_rooms[room_id]['revealed'][row][col] = True
-    is_mine = coop_rooms[room_id]['grid'][row][col] == -1
+    if coop_room['visible'][y][x] or coop_room['flagged'][y][x]:
+        return
+        
+    coop_room['visible'][y][x] = True
     
-    if is_mine:
-        coop_rooms[room_id]['game_over'] = True
+    if coop_room['grid'][y][x] == -1:
+        coop_room['game_over'] = True
         emit('coop_game_over', room=room_id)
-    else:
-        emit('coop_cell_revealed', {
-            'row': row,
-            'col': col,
-            'is_mine': is_mine,
-            'number': coop_rooms[room_id]['grid'][row][col]
-        }, room=room_id)
+        return
         
-        # Check if all non-mine cells are revealed
-        all_revealed = True
-        for i in range(coop_rooms[room_id]['grid_size']):
-            for j in range(coop_rooms[room_id]['grid_size']):
-                if coop_rooms[room_id]['grid'][i][j] != -1 and not coop_rooms[room_id]['revealed'][i][j]:
-                    all_revealed = False
-                    break
-            if not all_revealed:
+    if coop_room['grid'][y][x] == 0:
+        # Reveal adjacent cells
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if dx == 0 and dy == 0:
+                    continue
+                new_x, new_y = x + dx, y + dy
+                if 0 <= new_x < coop_room['grid_size'] and 0 <= new_y < coop_room['grid_size']:
+                    if not coop_room['visible'][new_y][new_x] and not coop_room['flagged'][new_y][new_x]:
+                        handle_reveal_coop_cell({
+                            'room_id': room_id,
+                            'x': new_x,
+                            'y': new_y
+                        })
+    
+    # Check if all non-mine cells are revealed
+    all_revealed = True
+    for y in range(coop_room['grid_size']):
+        for x in range(coop_room['grid_size']):
+            if coop_room['grid'][y][x] != -1 and not coop_room['visible'][y][x]:
+                all_revealed = False
                 break
-                
-        if all_revealed:
-            coop_rooms[room_id]['game_over'] = True
-            emit('coop_game_won', room=room_id)
+        if not all_revealed:
+            break
+            
+    if all_revealed:
+        emit('coop_game_won', room=room_id)
+    
+    emit('coop_game_update', {
+        'grid': coop_room['grid'],
+        'visible': coop_room['visible'],
+        'flagged': coop_room['flagged'],
+        'game_over': coop_room['game_over']
+    }, room=room_id)
 
 @socketio.on('toggle_flag')
 def handle_toggle_flag(data):
@@ -434,17 +487,27 @@ def handle_toggle_flag(data):
 @socketio.on('toggle_coop_flag')
 def handle_toggle_coop_flag(data):
     room_id = data['room_id']
-    row = data['row']
-    col = data['col']
+    x = data['x']
+    y = data['y']
     
-    if room_id not in coop_rooms or not coop_rooms[room_id]['game_started'] or coop_rooms[room_id]['game_over']:
+    if room_id not in coop_rooms:
         return
         
-    if coop_rooms[room_id]['revealed'][row][col]:
+    coop_room = coop_rooms[room_id]
+    if not coop_room['game_started'] or coop_room['game_over']:
         return
         
-    coop_rooms[room_id]['flags'][row][col] = not coop_rooms[room_id]['flags'][row][col]
-    emit('coop_cell_flagged', {'row': row, 'col': col}, room=room_id)
+    if coop_room['visible'][y][x]:
+        return
+        
+    coop_room['flagged'][y][x] = not coop_room['flagged'][y][x]
+    
+    emit('coop_game_update', {
+        'grid': coop_room['grid'],
+        'visible': coop_room['visible'],
+        'flagged': coop_room['flagged'],
+        'game_over': coop_room['game_over']
+    }, room=room_id)
 
 @socketio.on('new_game')
 def handle_new_game(data):
