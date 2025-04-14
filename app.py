@@ -148,21 +148,26 @@ def handle_create_room(data):
         emit('error', {'message': 'Room already exists'})
         return
         
-    grid = generate_grid(grid_size, num_mines)
     rooms[room_id] = {
-        'players': [player_name],
-        'grid': grid,
+        'players': {},
         'grid_size': grid_size,
         'num_mines': num_mines,
-        'revealed': [[False for _ in range(grid_size)] for _ in range(grid_size)],
-        'flags': [[False for _ in range(grid_size)] for _ in range(grid_size)],
-        'game_started': False,
-        'game_over': False,
-        'scores': {player_name: 0}
+        'started': False,
+        'rankings': []
+    }
+    
+    # Add the host as the first player
+    player_id = request.sid
+    rooms[room_id]['players'][player_id] = {
+        'name': player_name,
+        'game': MinesweeperGame(grid_size, num_mines)
     }
     
     join_room(room_id)
-    emit('room_created', {'players': rooms[room_id]['players']}, room=room_id)
+    emit('room_created', {'room_id': room_id})
+    
+    # Send initial game state to all players in the room
+    send_game_state(room_id)
 
 @socketio.on('create_coop_room')
 def handle_create_coop_room(data):
@@ -196,19 +201,25 @@ def handle_join_room(data):
     player_name = data['player_name']
     
     if room_id not in rooms:
-        emit('error', {'message': 'Room does not exist'})
+        emit('error', {'message': 'Room not found'})
         return
         
-    if player_name in rooms[room_id]['players']:
-        emit('error', {'message': 'Name already taken'})
+    room = rooms[room_id]
+    if len(room['players']) >= room['num_mines']:
+        emit('error', {'message': 'Room is full'})
         return
         
-    rooms[room_id]['players'].append(player_name)
-    rooms[room_id]['scores'][player_name] = 0
+    player_id = request.sid
+    room['players'][player_id] = {
+        'name': player_name,
+        'game': MinesweeperGame(room['grid_size'], room['num_mines'])
+    }
     
     join_room(room_id)
-    emit('room_joined', {'players': rooms[room_id]['players']}, room=room_id)
-    emit('player_joined', {'players': rooms[room_id]['players']}, room=room_id)
+    emit('joined_room', {'room_id': room_id})
+    
+    # Send game state to all players in the room
+    send_game_state(room_id)
 
 @socketio.on('join_coop_room')
 def handle_join_coop_room(data):
@@ -233,12 +244,9 @@ def handle_join_coop_room(data):
 def handle_start_game(data):
     room_id = data['room_id']
     if room_id in rooms:
-        rooms[room_id]['game_started'] = True
-        emit('game_started', {
-            'grid': rooms[room_id]['grid'],
-            'grid_size': rooms[room_id]['grid_size'],
-            'num_mines': rooms[room_id]['num_mines']
-        }, room=room_id)
+        room = rooms[room_id]
+        room['started'] = True
+        emit('game_started', room_id=room_id)
 
 @socketio.on('start_coop_game')
 def handle_start_coop_game(data):
@@ -254,44 +262,64 @@ def handle_start_coop_game(data):
 @socketio.on('reveal_cell')
 def handle_reveal_cell(data):
     room_id = data['room_id']
-    player_name = data['player_name']
-    row = data['row']
-    col = data['col']
+    x = data['x']
+    y = data['y']
     
-    if room_id not in rooms or not rooms[room_id]['game_started'] or rooms[room_id]['game_over']:
+    if room_id not in rooms:
         return
         
-    if rooms[room_id]['revealed'][row][col] or rooms[room_id]['flags'][row][col]:
+    room = rooms[room_id]
+    if not room['started']:
         return
         
-    rooms[room_id]['revealed'][row][col] = True
-    is_mine = rooms[room_id]['grid'][row][col] == -1
-    
-    if is_mine:
-        rooms[room_id]['game_over'] = True
-        emit('game_over', {'player': player_name}, room=room_id)
-    else:
-        rooms[room_id]['scores'][player_name] += 1
-        emit('cell_revealed', {
-            'row': row,
-            'col': col,
-            'is_mine': is_mine,
-            'number': rooms[room_id]['grid'][row][col]
-        }, room=room_id)
+    player_id = request.sid
+    if player_id not in room['players']:
+        return
         
-        # Check if all non-mine cells are revealed
-        all_revealed = True
-        for i in range(rooms[room_id]['grid_size']):
-            for j in range(rooms[room_id]['grid_size']):
-                if rooms[room_id]['grid'][i][j] != -1 and not rooms[room_id]['revealed'][i][j]:
-                    all_revealed = False
-                    break
-            if not all_revealed:
-                break
-                
-        if all_revealed:
-            rooms[room_id]['game_over'] = True
-            emit('game_won', {'scores': rooms[room_id]['scores']}, room=room_id)
+    player = room['players'][player_id]
+    game = player['game']
+    
+    # Don't allow moves if the player has already lost
+    if game.game_over:
+        return
+        
+    game.reveal(x, y)
+    
+    # Update game state for all players
+    grids_data = {}
+    for pid, player_data in room['players'].items():
+        grids_data[pid] = {
+            'name': player_data['name'],
+            'grid': player_data['game'].grid,
+            'visible': player_data['game'].visible,
+            'flagged': player_data['game'].flagged,
+            'size': room['grid_size'],
+            'game_over': player_data['game'].game_over
+        }
+    
+    if game.game_over or game.won:
+        if game.won:
+            completion_time = game.end_time - game.start_time
+            room['rankings'].append({
+                'name': player['name'],
+                'time': completion_time,
+                'status': 'completed'
+            })
+        elif game.game_over:
+            room['rankings'].append({
+                'name': player['name'],
+                'time': None,
+                'status': 'dnf'
+            })
+        room['rankings'].sort(key=lambda x: (x['status'] == 'dnf', x['time'] if x['time'] is not None else float('inf')))
+    
+    emit('game_update', {
+        'grids': grids_data,
+        'game_over': game.game_over,
+        'won': game.won,
+        'rankings': room['rankings'],
+        'loser_id': player_id if game.game_over else None
+    }, room=room_id)
 
 @socketio.on('reveal_coop_cell')
 def handle_reveal_coop_cell(data):
@@ -336,17 +364,57 @@ def handle_reveal_coop_cell(data):
 @socketio.on('toggle_flag')
 def handle_toggle_flag(data):
     room_id = data['room_id']
-    row = data['row']
-    col = data['col']
+    x = data['x']
+    y = data['y']
     
-    if room_id not in rooms or not rooms[room_id]['game_started'] or rooms[room_id]['game_over']:
+    if room_id not in rooms:
         return
         
-    if rooms[room_id]['revealed'][row][col]:
+    room = rooms[room_id]
+    if not room['started']:
         return
         
-    rooms[room_id]['flags'][row][col] = not rooms[room_id]['flags'][row][col]
-    emit('cell_flagged', {'row': row, 'col': col}, room=room_id)
+    player_id = request.sid
+    if player_id not in room['players']:
+        return
+        
+    player = room['players'][player_id]
+    game = player['game']
+    
+    # Don't allow moves if the player has already lost
+    if game.game_over:
+        return
+        
+    game.toggle_flag(x, y)
+    
+    # Update game state for all players
+    grids_data = {}
+    for pid, player_data in room['players'].items():
+        grids_data[pid] = {
+            'name': player_data['name'],
+            'grid': player_data['game'].grid,
+            'visible': player_data['game'].visible,
+            'flagged': player_data['game'].flagged,
+            'size': room['grid_size'],
+            'game_over': player_data['game'].game_over
+        }
+    
+    if game.won:
+        completion_time = game.end_time - game.start_time
+        room['rankings'].append({
+            'name': player['name'],
+            'time': completion_time,
+            'status': 'completed'
+        })
+        room['rankings'].sort(key=lambda x: (x['status'] == 'dnf', x['time'] if x['time'] is not None else float('inf')))
+    
+    emit('game_update', {
+        'grids': grids_data,
+        'game_over': game.game_over,
+        'won': game.won,
+        'rankings': room['rankings'],
+        'loser_id': player_id if game.game_over else None
+    }, room=room_id)
 
 @socketio.on('toggle_coop_flag')
 def handle_toggle_coop_flag(data):
@@ -366,25 +434,20 @@ def handle_toggle_coop_flag(data):
 @socketio.on('new_game')
 def handle_new_game(data):
     room_id = data['room_id']
-    if room_id in rooms:
-        grid_size = rooms[room_id]['grid_size']
-        num_mines = rooms[room_id]['num_mines']
-        players = rooms[room_id]['players']
-        
-        grid = generate_grid(grid_size, num_mines)
-        rooms[room_id] = {
-            'players': players,
-            'grid': grid,
-            'grid_size': grid_size,
-            'num_mines': num_mines,
-            'revealed': [[False for _ in range(grid_size)] for _ in range(grid_size)],
-            'flags': [[False for _ in range(grid_size)] for _ in range(grid_size)],
-            'game_started': False,
-            'game_over': False,
-            'scores': {player: 0 for player in players}
-        }
-        
-        emit('game_reset', room=room_id)
+    if room_id not in rooms:
+        return
+    
+    room = rooms[room_id]
+    room['started'] = False
+    room['rankings'] = []
+    
+    # Reset all players' games
+    for player_id, player_data in room['players'].items():
+        player_data['game'] = MinesweeperGame(room['grid_size'], room['num_mines'])
+    
+    # Send initial game state to all players
+    send_game_state(room_id)
+    emit('game_reset', room_id=room_id)
 
 @socketio.on('new_coop_game')
 def handle_new_coop_game(data):
@@ -411,14 +474,31 @@ def handle_new_coop_game(data):
 @socketio.on('disconnect')
 def handle_disconnect():
     for room_id, room in rooms.items():
-        if request.sid in room.get('players', []):
-            room['players'].remove(request.sid)
-            emit('player_left', {'players': room['players']}, room=room_id)
+        if request.sid in room['players']:
+            del room['players'][request.sid]
+            emit('player_left', {'players': [p['name'] for p in room['players'].values()]}, room=room_id)
             
     for room_id, room in coop_rooms.items():
         if request.sid in room.get('players', []):
             room['players'].remove(request.sid)
             emit('player_left_coop', {'players': room['players']}, room=room_id)
+
+def send_game_state(room_id):
+    room = rooms[room_id]
+    grids_data = {}
+    for pid, player_data in room['players'].items():
+        grids_data[pid] = {
+            'name': player_data['name'],
+            'grid': player_data['game'].grid,
+            'visible': player_data['game'].visible,
+            'flagged': player_data['game'].flagged,
+            'size': room['grid_size']
+        }
+    
+    emit('game_update', {
+        'grids': grids_data,
+        'rankings': room['rankings']
+    }, room=room_id)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
