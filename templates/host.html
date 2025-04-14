@@ -104,8 +104,8 @@
         const gridSize = parseInt(document.getElementById('grid_size').value);
         const numMines = parseInt(document.getElementById('mines').value);
         
-        // Generate a random room ID
-        roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        // Generate a random 4-digit room ID
+        roomId = Math.floor(1000 + Math.random() * 9000).toString();
         
         socket.emit('create_room', {
             room_id: roomId,
