@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="game-setup">
+    <h2>Create Cooperative Game</h2>
+    <div class="form-group">
+        <label for="player_name">Your Name:</label>
+        <input type="text" id="player_name" class="form-control" required>
+    </div>
+    <div class="form-group">
+        <label for="grid_size">Grid Size:</label>
+        <select id="grid_size" class="form-control">
+            <option value="3">3x3</option>
+            <option value="5">5x5</option>
+            <option value="8">8x8</option>
+            <option value="10">10x10</option>
+            <option value="12">12x12</option>
+            <option value="15">15x15</option>
+            <option value="20">20x20</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="mines">Number of Mines:</label>
+        <select id="mines" class="form-control">
+            <option value="3">3 Mines</option>
+            <option value="5">5 Mines</option>
+            <option value="8">8 Mines</option>
+            <option value="10">10 Mines</option>
+            <option value="12">12 Mines</option>
+            <option value="15">15 Mines</option>
+            <option value="20">20 Mines</option>
+            <option value="25">25 Mines</option>
+            <option value="30">30 Mines</option>
+            <option value="40">40 Mines</option>
+            <option value="50">50 Mines</option>
+            <option value="60">60 Mines</option>
+            <option value="70">70 Mines</option>
+            <option value="80">80 Mines</option>
+            <option value="90">90 Mines</option>
+            <option value="100">100 Mines</option>
+        </select>
+    </div>
+    <button id="create_game">Create Game</button>
+    <div id="error" class="error"></div>
+</div>
+
+<div id="waiting_area" style="display: none;">
+    <h2>Waiting for Players</h2>
+    <p>Room Code: <span id="room_code"></span></p>
+    <p>Share this code with your friends to join the game!</p>
+    <div id="player_list">
+        <h3>Players in Room:</h3>
+        <ul id="players"></ul>
+    </div>
+    <button id="start_game">Start Game</button>
+</div>
+
+<div id="game_area" style="display: none;">
+    <h2>Cooperative Minesweeper</h2>
+    <div id="shared_grid" class="player-grid"></div>
+    <div id="game_over" class="game-over" style="display: none;">
+        <h2>Game Over!</h2>
+        <button class="new-game-button">New Game</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let socket;
+    let roomId;
+    let playerName;
+    let gridSize;
+    let numMines;
+    let longPressTimer;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        socket = io();
+
+        // Update mines options based on grid size
+        function updateMinesOptions() {
+            const gridSize = parseInt(document.getElementById('grid_size').value);
+            const minesSelect = document.getElementById('mines');
+            const maxMines = Math.floor((gridSize * gridSize) * 0.35);
+            
+            minesSelect.innerHTML = '';
+            const mineOptions = [3, 5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100];
+            
+            mineOptions.forEach(mines => {
+                if (mines <= maxMines) {
+                    const option = document.createElement('option');
+                    option.value = mines;
+                    option.textContent = `${mines} Mines`;
+                    minesSelect.appendChild(option);
+                }
+            });
+        }
+
+        document.getElementById('grid_size').addEventListener('change', updateMinesOptions);
+        updateMinesOptions();
+
+        document.getElementById('create_game').addEventListener('click', () => {
+            playerName = document.getElementById('player_name').value.trim();
+            gridSize = parseInt(document.getElementById('grid_size').value);
+            numMines = parseInt(document.getElementById('mines').value);
+
+            if (!playerName) {
+                showError('Please enter your name');
+                return;
+            }
+
+            // Generate a random 4-digit room ID
+            roomId = Math.floor(1000 + Math.random() * 9000).toString();
+
+            socket.emit('create_coop_room', {
+                room_id: roomId,
+                player_name: playerName,
+                grid_size: gridSize,
+                num_mines: numMines
+            });
+        });
+
+        socket.on('coop_room_created', (data) => {
+            document.querySelector('.game-setup').style.display = 'none';
+            document.getElementById('waiting_area').style.display = 'block';
+            document.getElementById('room_code').textContent = roomId;
+            updatePlayerList(data.players);
+        });
+
+        socket.on('player_joined_coop', (data) => {
+            updatePlayerList(data.players);
+        });
+
+        socket.on('player_left_coop', (data) => {
+            updatePlayerList(data.players);
+        });
+
+        socket.on('coop_game_started', (data) => {
+            document.getElementById('waiting_area').style.display = 'none';
+            document.getElementById('game_area').style.display = 'block';
+            createGrid(data.grid, data.mines);
+        });
+
+        socket.on('coop_cell_revealed', (data) => {
+            const cell = document.querySelector(`[data-row="${data.row}"][data-col="${data.col}"]`);
+            if (cell) {
+                cell.classList.add('revealed');
+                if (data.is_mine) {
+                    cell.classList.add('mine');
+                    cell.textContent = '💣';
+                } else if (data.number > 0) {
+                    cell.textContent = data.number;
+                    cell.setAttribute('data-number', data.number);
+                }
+            }
+        });
+
+        socket.on('coop_cell_flagged', (data) => {
+            const cell = document.querySelector(`[data-row="${data.row}"][data-col="${data.col}"]`);
+            if (cell) {
+                cell.classList.toggle('flagged');
+            }
+        });
+
+        socket.on('coop_game_over', () => {
+            document.getElementById('game_over').style.display = 'block';
+        });
+
+        document.getElementById('start_game').addEventListener('click', () => {
+            socket.emit('start_coop_game', { room_id: roomId });
+        });
+
+        document.querySelector('.new-game-button').addEventListener('click', () => {
+            socket.emit('new_coop_game', { room_id: roomId });
+        });
+
+        function updatePlayerList(players) {
+            const playerList = document.getElementById('players');
+            playerList.innerHTML = '';
+            players.forEach(player => {
+                const li = document.createElement('li');
+                li.textContent = player;
+                playerList.appendChild(li);
+            });
+        }
+
+        function createGrid(grid, mines) {
+            const gridContainer = document.getElementById('shared_grid');
+            gridContainer.innerHTML = '';
+            gridContainer.style.gridTemplateColumns = `repeat(${gridSize}, 30px)`;
+
+            for (let row = 0; row < gridSize; row++) {
+                for (let col = 0; col < gridSize; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+
+                    // Add event listeners for revealing and flagging cells
+                    cell.addEventListener('click', () => {
+                        if (!cell.classList.contains('revealed') && !cell.classList.contains('flagged')) {
+                            socket.emit('reveal_coop_cell', {
+                                room_id: roomId,
+                                row: row,
+                                col: col
+                            });
+                        }
+                    });
+
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        if (!cell.classList.contains('revealed')) {
+                            socket.emit('toggle_coop_flag', {
+                                room_id: roomId,
+                                row: row,
+                                col: col
+                            });
+                        }
+                    });
+
+                    // Long press for flagging on mobile
+                    cell.addEventListener('touchstart', () => {
+                        longPressTimer = setTimeout(() => {
+                            if (!cell.classList.contains('revealed')) {
+                                socket.emit('toggle_coop_flag', {
+                                    room_id: roomId,
+                                    row: row,
+                                    col: col
+                                });
+                            }
+                        }, 500);
+                    });
+
+                    cell.addEventListener('touchend', () => {
+                        clearTimeout(longPressTimer);
+                    });
+
+                    gridContainer.appendChild(cell);
+                }
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 3000);
+        }
+    });
+</script>
+{% endblock %} 
