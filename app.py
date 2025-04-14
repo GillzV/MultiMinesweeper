@@ -4,7 +4,6 @@ import random
 import time
 from datetime import datetime
 import os
-import string
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
@@ -112,18 +111,18 @@ def join():
     return render_template('join.html')
 
 @socketio.on('create_room')
-def create_room(data):
-    # Generate a 4-digit room ID
-    room_id = ''.join(random.choices(string.digits, k=4))
-    while room_id in rooms:
-        room_id = ''.join(random.choices(string.digits, k=4))
+def handle_create_room(data):
+    room_id = data['room_id']
+    num_players = data['num_players']
+    grid_size = data['grid_size']
+    num_mines = data['num_mines']
+    player_name = data['player_name']
     
-    # Create new room
     rooms[room_id] = {
-        'num_players': data['num_players'],
+        'num_players': num_players,
         'players': {},
-        'grid_size': data['grid_size'],
-        'num_mines': data['num_mines'],
+        'grid_size': grid_size,
+        'num_mines': num_mines,
         'started': False,
         'rankings': []
     }
@@ -131,8 +130,8 @@ def create_room(data):
     # Add the host as the first player
     player_id = request.sid
     rooms[room_id]['players'][player_id] = {
-        'name': data['player_name'],
-        'game': MinesweeperGame(data['grid_size'], data['num_mines'])
+        'name': player_name,
+        'game': MinesweeperGame(grid_size, num_mines)
     }
     
     join_room(room_id)
