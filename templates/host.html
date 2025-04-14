@@ -38,19 +38,24 @@
 </div>
 
 <div class="form-group">
-    <label for="num_mines">Number of Mines:</label>
-    <select id="num_mines">
-        <option value="2">2 Mines</option>
+    <label for="mines">Number of Mines:</label>
+    <select id="mines" class="form-control">
         <option value="3">3 Mines</option>
-        <option value="4">4 Mines</option>
         <option value="5">5 Mines</option>
-        <option value="6">6 Mines</option>
-        <option value="7">7 Mines</option>
         <option value="8">8 Mines</option>
         <option value="10">10 Mines</option>
         <option value="12">12 Mines</option>
         <option value="15">15 Mines</option>
         <option value="20">20 Mines</option>
+        <option value="25">25 Mines</option>
+        <option value="30">30 Mines</option>
+        <option value="40">40 Mines</option>
+        <option value="50">50 Mines</option>
+        <option value="60">60 Mines</option>
+        <option value="70">70 Mines</option>
+        <option value="80">80 Mines</option>
+        <option value="90">90 Mines</option>
+        <option value="100">100 Mines</option>
     </select>
 </div>
 
@@ -97,7 +102,7 @@
 
         const numPlayers = parseInt(document.getElementById('num_players').value);
         const gridSize = parseInt(document.getElementById('grid_size').value);
-        const numMines = parseInt(document.getElementById('num_mines').value);
+        const numMines = parseInt(document.getElementById('mines').value);
         
         // Generate a random room ID
         roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -305,5 +310,35 @@
     socket.on('error', (data) => {
         showError(data.message);
     });
+
+    // Update mines options based on grid size
+    function updateMinesOptions() {
+        const gridSize = parseInt(document.getElementById('grid_size').value);
+        const minesSelect = document.getElementById('mines');
+        const maxMines = Math.floor((gridSize * gridSize) * 0.35); // Maximum 35% of cells can be mines
+        
+        // Clear existing options
+        minesSelect.innerHTML = '';
+        
+        // Add appropriate mine options based on grid size
+        const mineOptions = [
+            3, 5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100
+        ];
+        
+        mineOptions.forEach(mines => {
+            if (mines <= maxMines) {
+                const option = document.createElement('option');
+                option.value = mines;
+                option.textContent = `${mines} Mines`;
+                minesSelect.appendChild(option);
+            }
+        });
+    }
+
+    // Add event listener for grid size changes
+    document.getElementById('grid_size').addEventListener('change', updateMinesOptions);
+    
+    // Initialize mines options
+    updateMinesOptions();
 </script>
 {% endblock %} 
