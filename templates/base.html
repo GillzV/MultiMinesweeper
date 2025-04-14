@@ -218,8 +218,6 @@
         <a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a>
         <a href="/host" class="{% if request.path == '/host' %}active{% endif %}">Host Game</a>
         <a href="/join" class="{% if request.path == '/join' %}active{% endif %}">Join Game</a>
-        <a href="/coop" class="{% if request.path == '/coop' %}active{% endif %}">Cooperative Game</a>
-        <a href="/join_coop" class="{% if request.path == '/join_coop' %}active{% endif %}">Join Cooperative</a>
     </div>
     <div class="container">
         {% block content %}{% endblock %}

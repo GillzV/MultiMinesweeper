@@ -1,280 +1,344 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="game-setup">
-    <h2>Create Game</h2>
-    <div class="form-group">
-        <label for="player_name">Your Name:</label>
-        <input type="text" id="player_name" class="form-control" required>
-    </div>
-    <div class="form-group">
-        <label for="grid_size">Grid Size:</label>
-        <select id="grid_size" class="form-control">
-            <option value="3">3x3</option>
-            <option value="4">4x4</option>
-            <option value="5">5x5</option>
-            <option value="6">6x6</option>
-            <option value="7">7x7</option>
-            <option value="8">8x8</option>
-            <option value="9">9x9</option>
-            <option value="10">10x10</option>
-            <option value="12">12x12</option>
-            <option value="15">15x15</option>
-            <option value="20">20x20</option>
-        </select>
-    </div>
-    <div class="form-group">
-        <label for="num_mines">Number of Mines:</label>
-        <select id="num_mines" class="form-control">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-            <option value="8">8</option>
-            <option value="9">9</option>
-            <option value="10">10</option>
-            <option value="12">12</option>
-            <option value="15">15</option>
-            <option value="20">20</option>
-        </select>
-    </div>
-    <button id="create_game">Create Game</button>
-    <div id="error" class="error"></div>
+<h1>Host a Game</h1>
+<div class="form-group">
+    <label for="host_name">Your Name:</label>
+    <input type="text" id="host_name" placeholder="Enter your name">
 </div>
 
-<div id="waiting_area" style="display: none;">
-    <h2>Waiting for Players</h2>
-    <div class="room-info">
-        <h3>Room Code: <span id="room_code"></span></h3>
-    </div>
-    <div id="player_list">
-        <h3>Players in Room:</h3>
-        <ul id="players"></ul>
-    </div>
-    <button id="start_game">Start Game</button>
-    <div id="countdown" style="display: none;">
-        <h3>Game starting in: <span id="countdown_timer">3</span></h3>
+<div class="form-group">
+    <label for="num_players">Number of Players:</label>
+    <select id="num_players">
+        <option value="2">2 Players</option>
+        <option value="3">3 Players</option>
+        <option value="4">4 Players</option>
+        <option value="5">5 Players</option>
+        <option value="6">6 Players</option>
+        <option value="7">7 Players</option>
+        <option value="8">8 Players</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="grid_size">Grid Size:</label>
+    <select id="grid_size">
+        <option value="3">3x3</option>
+        <option value="4">4x4</option>
+        <option value="5">5x5</option>
+        <option value="6">6x6</option>
+        <option value="7">7x7</option>
+        <option value="8">8x8</option>
+        <option value="9">9x9</option>
+        <option value="10">10x10</option>
+        <option value="12">12x12</option>
+        <option value="15">15x15</option>
+        <option value="20">20x20</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="mines">Number of Mines:</label>
+    <select id="mines" class="form-control">
+        <option value="3">3 Mines</option>
+        <option value="5">5 Mines</option>
+        <option value="8">8 Mines</option>
+        <option value="10">10 Mines</option>
+        <option value="12">12 Mines</option>
+        <option value="15">15 Mines</option>
+        <option value="20">20 Mines</option>
+        <option value="25">25 Mines</option>
+        <option value="30">30 Mines</option>
+        <option value="40">40 Mines</option>
+        <option value="50">50 Mines</option>
+        <option value="60">60 Mines</option>
+        <option value="70">70 Mines</option>
+        <option value="80">80 Mines</option>
+        <option value="90">90 Mines</option>
+        <option value="100">100 Mines</option>
+    </select>
+</div>
+
+<button onclick="createRoom()">Create Room</button>
+
+<div id="room_info" style="display: none; margin-top: 20px;">
+    <h3>Room Created!</h3>
+    <p>Share this link with your friends:</p>
+    <input type="text" id="room_link" readonly style="width: 100%; padding: 10px; margin: 10px 0;">
+    <button onclick="copyLink()">Copy Link</button>
+    <div id="start_game_container" style="margin-top: 20px;">
+        <button id="start_game_button" onclick="startGame()" style="background-color: #4CAF50;">Start Game</button>
     </div>
 </div>
+
+<div id="error" class="error" style="display: none;"></div>
 
 <div id="game_area" style="display: none;">
-    <h2>Multiplayer Minesweeper</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Game Room</h2>
+        <button onclick="startNewGame()" class="new-game-button" style="margin: 0;">New Game</button>
+    </div>
     <div id="player_grids"></div>
-    <div id="rankings" class="rankings">
+    <div class="rankings">
         <h3>Rankings</h3>
         <ul id="rankings_list" class="rankings-list"></ul>
-    </div>
-    <div id="game_over" class="game-over" style="display: none;">
-        <h2>Game Over!</h2>
-        <button id="new_game">New Game</button>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    let socket;
-    let roomId;
-    let playerName;
-    let longPressTimer;
+    const socket = io();
+    let roomId = null;
+    let currentPlayerId = null;
+    let longPressTimer = null;
 
-    document.addEventListener('DOMContentLoaded', () => {
-        socket = io();
-
-        document.getElementById('create_game').addEventListener('click', () => {
-            playerName = document.getElementById('player_name').value.trim();
-            const gridSize = parseInt(document.getElementById('grid_size').value);
-            const numMines = parseInt(document.getElementById('num_mines').value);
-
-            if (!playerName) {
-                showError('Please enter your name');
-                return;
-            }
-
-            if (numMines >= gridSize * gridSize) {
-                showError('Too many mines for this grid size');
-                return;
-            }
-
-            // Generate a 4-digit room code
-            roomId = Math.floor(1000 + Math.random() * 9000).toString();
-            socket.emit('create_room', {
-                room_id: roomId,
-                player_name: playerName,
-                grid_size: gridSize,
-                num_mines: numMines
-            });
-        });
-
-        document.getElementById('start_game').addEventListener('click', () => {
-            socket.emit('start_game', { room_id: roomId });
-        });
-
-        document.getElementById('new_game').addEventListener('click', () => {
-            socket.emit('new_game', { room_id: roomId });
-        });
-
-        socket.on('room_created', (data) => {
-            document.querySelector('.game-setup').style.display = 'none';
-            document.getElementById('waiting_area').style.display = 'block';
-            document.getElementById('room_code').textContent = roomId;
-            updatePlayerList([playerName]);
-        });
-
-        socket.on('player_joined', (data) => {
-            updatePlayerList(data.players);
-        });
-
-        socket.on('player_left', (data) => {
-            updatePlayerList(data.players);
-        });
-
-        socket.on('game_start', () => {
-            document.getElementById('countdown').style.display = 'block';
-            let count = 3;
-            const countdownElement = document.getElementById('countdown_timer');
-            
-            const timer = setInterval(() => {
-                count--;
-                countdownElement.textContent = count;
-                
-                if (count <= 0) {
-                    clearInterval(timer);
-                    document.getElementById('waiting_area').style.display = 'none';
-                    document.getElementById('game_area').style.display = 'block';
-                }
-            }, 1000);
-        });
-
-        socket.on('game_update', (data) => {
-            updateGrids(data.grids);
-            updateRankings(data.rankings);
-            
-            if (data.game_over) {
-                document.getElementById('game_over').style.display = 'block';
-            }
-        });
-
-        function updatePlayerList(players) {
-            const playerList = document.getElementById('players');
-            playerList.innerHTML = '';
-            players.forEach(player => {
-                const li = document.createElement('li');
-                li.textContent = player;
-                playerList.appendChild(li);
-            });
+    function createRoom() {
+        const hostName = document.getElementById('host_name').value.trim();
+        if (!hostName) {
+            showError('Please enter your name');
+            return;
         }
 
-        function updateGrids(gridsData) {
-            const gridsContainer = document.getElementById('player_grids');
-            gridsContainer.innerHTML = '';
+        const numPlayers = parseInt(document.getElementById('num_players').value);
+        const gridSize = parseInt(document.getElementById('grid_size').value);
+        const numMines = parseInt(document.getElementById('mines').value);
+        
+        // Generate a random 4-digit room ID
+        roomId = Math.floor(1000 + Math.random() * 9000).toString();
+        
+        socket.emit('create_room', {
+            room_id: roomId,
+            num_players: numPlayers,
+            grid_size: gridSize,
+            num_mines: numMines,
+            player_name: hostName
+        });
+    }
+
+    function startGame() {
+        socket.emit('start_game', { room_id: roomId });
+    }
+
+    function copyLink() {
+        const roomLink = document.getElementById('room_link');
+        roomLink.select();
+        document.execCommand('copy');
+        alert('Link copied to clipboard!');
+    }
+
+    function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+    }
+
+    function createGrid(size, isActive = false) {
+        const grid = document.createElement('div');
+        grid.className = `grid player-grid ${isActive ? 'active' : 'inactive'}`;
+        grid.style.gridTemplateColumns = `repeat(${size}, 30px)`;
+        
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+                if (isActive) {
+                    cell.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (e.type === 'contextmenu' || longPressTimer) {
+                            toggleFlag(x, y);
+                        } else {
+                            revealCell(x, y);
+                        }
+                    });
+                    
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggleFlag(x, y);
+                    });
+                    
+                    cell.addEventListener('mousedown', () => {
+                        longPressTimer = setTimeout(() => {
+                            toggleFlag(x, y);
+                        }, 500);
+                    });
+                    
+                    cell.addEventListener('mouseup', () => {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    });
+                }
+                grid.appendChild(cell);
+            }
+        }
+        
+        return grid;
+    }
+
+    function revealCell(x, y) {
+        socket.emit('reveal_cell', {
+            room_id: roomId,
+            x: x,
+            y: y
+        });
+    }
+
+    function toggleFlag(x, y) {
+        socket.emit('toggle_flag', {
+            room_id: roomId,
+            x: x,
+            y: y
+        });
+    }
+
+    function updateGrids(data) {
+        const playerGridsDiv = document.getElementById('player_grids');
+        playerGridsDiv.innerHTML = '';
+
+        // Create a grid for each player
+        Object.entries(data.grids).forEach(([playerId, gridData]) => {
+            const gridContainer = document.createElement('div');
+            gridContainer.style.marginBottom = '20px';
             
-            Object.entries(gridsData).forEach(([playerId, data]) => {
-                const gridDiv = document.createElement('div');
-                gridDiv.className = 'player-grid';
-                gridDiv.innerHTML = `<h3>${data.name}</h3>`;
-                
-                const grid = document.createElement('div');
-                grid.className = 'grid';
-                grid.style.gridTemplateColumns = `repeat(${data.size}, 30px)`;
-                
-                for (let y = 0; y < data.size; y++) {
-                    for (let x = 0; x < data.size; x++) {
-                        const cell = document.createElement('div');
-                        cell.className = 'cell';
-                        cell.dataset.x = x;
-                        cell.dataset.y = y;
-                        
-                        if (data.visible[y][x]) {
-                            cell.classList.add('revealed');
-                            if (data.grid[y][x] === -1) {
-                                cell.classList.add('mine');
-                                cell.textContent = '💣';
-                            } else if (data.grid[y][x] > 0) {
-                                cell.textContent = data.grid[y][x];
-                                cell.setAttribute('data-number', data.grid[y][x]);
-                            }
+            const playerName = document.createElement('h3');
+            playerName.textContent = gridData.name;
+            gridContainer.appendChild(playerName);
+
+            const grid = createGrid(gridData.size, playerId === currentPlayerId && !gridData.game_over);
+            gridContainer.appendChild(grid);
+
+            // Update cell states
+            gridData.visible.forEach((row, y) => {
+                row.forEach((isVisible, x) => {
+                    const cell = grid.children[y * gridData.size + x];
+                    if (isVisible) {
+                        cell.classList.add('revealed');
+                        if (gridData.grid[y][x] === -1) {
+                            cell.classList.add('mine');
+                            cell.textContent = '💣';
+                        } else if (gridData.grid[y][x] > 0) {
+                            cell.textContent = gridData.grid[y][x];
+                            cell.dataset.number = gridData.grid[y][x];
                         }
-                        
-                        if (data.flagged[y][x]) {
-                            cell.classList.add('flagged');
-                        }
-                        
-                        if (playerId === socket.id) {
-                            cell.addEventListener('click', () => {
-                                if (!cell.classList.contains('revealed') && !cell.classList.contains('flagged')) {
-                                    socket.emit('reveal_cell', {
-                                        room_id: roomId,
-                                        x: x,
-                                        y: y
-                                    });
-                                }
-                            });
-                            
-                            cell.addEventListener('contextmenu', (e) => {
-                                e.preventDefault();
-                                if (!cell.classList.contains('revealed')) {
-                                    socket.emit('toggle_flag', {
-                                        room_id: roomId,
-                                        x: x,
-                                        y: y
-                                    });
-                                }
-                            });
-                            
-                            // Long press for flagging on mobile
-                            cell.addEventListener('touchstart', () => {
-                                longPressTimer = setTimeout(() => {
-                                    if (!cell.classList.contains('revealed')) {
-                                        socket.emit('toggle_flag', {
-                                            room_id: roomId,
-                                            x: x,
-                                            y: y
-                                        });
-                                    }
-                                }, 500);
-                            });
-                            
-                            cell.addEventListener('touchend', () => {
-                                clearTimeout(longPressTimer);
-                            });
-                        }
-                        
-                        grid.appendChild(cell);
                     }
-                }
-                
-                gridDiv.appendChild(grid);
-                gridsContainer.appendChild(gridDiv);
+                });
             });
-        }
 
-        function updateRankings(rankings) {
-            const rankingsList = document.getElementById('rankings_list');
-            rankingsList.innerHTML = '';
-            
-            rankings.forEach((rank, index) => {
-                const li = document.createElement('li');
-                if (rank.status === 'completed') {
-                    li.textContent = `${index + 1}. ${rank.name} - ${rank.time.toFixed(2)}s`;
-                } else {
-                    li.textContent = `${index + 1}. ${rank.name} - DNF`;
-                }
-                rankingsList.appendChild(li);
+            // Update flag states
+            gridData.flagged.forEach((row, y) => {
+                row.forEach((isFlagged, x) => {
+                    const cell = grid.children[y * gridData.size + x];
+                    if (isFlagged) {
+                        cell.classList.add('flagged');
+                    } else {
+                        cell.classList.remove('flagged');
+                    }
+                });
             });
-        }
 
-        function showError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 3000);
-        }
+            playerGridsDiv.appendChild(gridContainer);
+        });
+    }
+
+    function updateRankings(rankings) {
+        const rankingsList = document.getElementById('rankings_list');
+        rankingsList.innerHTML = '';
+        
+        rankings.forEach((player, index) => {
+            const li = document.createElement('li');
+            if (player.status === 'dnf') {
+                li.textContent = `${index + 1}. ${player.name} - DNF`;
+            } else {
+                li.textContent = `${index + 1}. ${player.name} - ${player.time.toFixed(2)}s`;
+            }
+            rankingsList.appendChild(li);
+        });
+    }
+
+    function startNewGame() {
+        socket.emit('new_game', { room_id: roomId });
+    }
+
+    socket.on('room_created', (data) => {
+        const roomInfo = document.getElementById('room_info');
+        const roomLink = document.getElementById('room_link');
+        roomLink.value = `${window.location.origin}/join?room=${roomId}`;
+        roomInfo.style.display = 'block';
+        
+        // Hide the form and show the game area
+        document.querySelectorAll('.form-group').forEach(el => el.style.display = 'none');
+        document.querySelector('button').style.display = 'none';
+        document.getElementById('game_area').style.display = 'block';
+        currentPlayerId = socket.id;
     });
+
+    socket.on('game_start', () => {
+        // Game starts immediately
+        socket.emit('game_started', { room_id: roomId });
+    });
+
+    socket.on('game_started', () => {
+        document.getElementById('start_game_container').style.display = 'none';
+    });
+
+    socket.on('game_reset', () => {
+        // Remove any existing game over display
+        const existingGameOver = document.querySelector('.game-over');
+        if (existingGameOver) {
+            existingGameOver.remove();
+        }
+        
+        // Show the start game button again
+        const startGameContainer = document.getElementById('start_game_container');
+        const startButton = document.getElementById('start_game_button');
+        startGameContainer.style.display = 'block';
+        startButton.style.display = 'block';
+    });
+
+    socket.on('game_update', (data) => {
+        updateGrids(data);
+        updateRankings(data.rankings);
+    });
+
+    socket.on('error', (data) => {
+        showError(data.message);
+    });
+
+    // Update mines options based on grid size
+    function updateMinesOptions() {
+        const gridSize = parseInt(document.getElementById('grid_size').value);
+        const minesSelect = document.getElementById('mines');
+        const maxMines = Math.floor((gridSize * gridSize) * 0.35); // Maximum 35% of cells can be mines
+        
+        // Clear existing options
+        minesSelect.innerHTML = '';
+        
+        // Add appropriate mine options based on grid size
+        const mineOptions = [
+            3, 5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100
+        ];
+        
+        mineOptions.forEach(mines => {
+            if (mines <= maxMines) {
+                const option = document.createElement('option');
+                option.value = mines;
+                option.textContent = `${mines} Mines`;
+                minesSelect.appendChild(option);
+            }
+        });
+    }
+
+    // Add event listener for grid size changes
+    document.getElementById('grid_size').addEventListener('change', updateMinesOptions);
+    
+    // Initialize mines options
+    updateMinesOptions();
 </script>
 {% endblock %} 
